@@ -1,66 +1,88 @@
+import json
 import re
-
-f = open("../train.csv", encoding="cp1251")
-f.readline()
 
 
 class Data:
-    def __init__(self, lst):
-        self.postId = lst[0]
+    def __init__(self, lst, body):
+        self.postId = int(lst[0])
         self.postCreationDate = lst[1]
-        self.ownerUserId = lst[2]
+        self.ownerUserId = int(lst[2])
         self.ownerCreationDate = lst[3]
-        self.reputationAtPostCreation = lst[4]
-        self.ownerUndeletedAnswerCountAtPostTime = lst[5]
+        self.reputationAtPostCreation = int(lst[4])
+        self.ownerUndeletedAnswerCountAtPostTime = int(lst[5])
         self.title = lst[6]
-        self.bodyMarkdown = lst[7]
-        self.tags = lst[8:13]
-        self.postClosedDate = lst[13]
-        self.openStatus = lst[14]
+        self.bodyMarkdown = body
+        self.tags = lst[7:12]
+        self.postClosedDate = lst[12]
+        self.openStatus = int(lst[13])
 
     def __unicode__(self):
-        return "{id: %s}" % self.postId
+        return json.dumps(self.__dict__)
 
     def __str__(self):
         return self.__unicode__()
 
 
-def readOne():
-    regexp = r'(?<!")"(?!")'
-    fullStr = r'",([a-zA-Z0-9!@#$%^&+*\(\)\[\]\\\/.-]*,){5}(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2})*,\d'
+class Parser:
+    def __init__(self, file):
+        self.f = file
 
-    s = f.readline()
-    if len(s) == 0:
-        return []
-    params = s.strip().split(",")
+    def get_title(self, s):
+        title_re = r'"((.|\s)*?)"'
+        title = ""
 
-    toTest = '",' + ",".join(params[-7:])
-    if re.match(fullStr, toTest):
-        # wow, we have a single-line data, good
-        return params
+        while re.match(title_re, s):
+            match = re.match(title_re, s)
+            offset = len(match.group())
+            title += s[:offset]
+            s = s[offset:]
 
-    body = "".join(params[7:])[1:]
-    params = params[:8]
-    while True:
-        s = f.readline()
-        match = re.search(fullStr, s)
-        if match:
-            # found end quote, parsing data left
-            offs = match.start(0)
-            body += s[:offs]
-            left = s[offs + 2:]
-            params[7] = body
-            params += left.strip().split(",")
-            return params
+        return title, s
 
-        body += s
+    def read_all(self):
+        e = r'",([a-zA-Z0-9!@#$%^&+*\(\)\[\]\\\/.-]*,){5}(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2})*,\d'
+        body_re = r'"((.|\s)+)"'
 
-res = []
-while True:
-    src = readOne()
-    if (len(src) == 0):
-        break
+        data = []
+        full_set = ""
 
-    res.append(Data(src))
+        for s in self.f:
+            full_set += s.strip()
+            if re.search(e, full_set):
+                # print("found a match!")
 
-print(len(res))
+                split_set = full_set.strip().split(",")
+                header = split_set[:6]
+                split_set = split_set[6:]
+                # print(header)
+
+                title = split_set[0]
+                if title.startswith('"'):
+                    tmp = ",".join(split_set)
+                    title, tmp = self.get_title(tmp)
+                    split_set = tmp.split(",")
+
+                # print(title)
+                split_set = split_set[1:]
+
+                body = split_set[0]
+                if body.startswith('"'):
+                    tmp = ",".join(split_set)
+                    match = re.match(body_re, tmp)
+                    size = len(match.group(0))
+                    body = tmp[:size]
+                    split_set = tmp[size:].split(",")
+
+                footer = split_set[1:]
+                # print(footer)
+
+                element = []
+                element.extend(header)
+                element.append(title)
+                element.extend(footer)
+
+                data.append(Data(element, body))
+
+                full_set = ""
+
+        return data
